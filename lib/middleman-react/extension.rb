@@ -1,3 +1,5 @@
+require 'pathname'
+
 module Middleman
   class ReactExtension < Extension
     option :targets, [], 'The build target information.'
@@ -6,8 +8,6 @@ module Middleman
       super
 
       require 'fileutils'
-
-      FileUtils.mkdir('tmp') unless File.exist?('tmp');
 
       ext = self
       app.ready do
@@ -28,19 +28,19 @@ module Middleman
           app.sitemap,
           t[:output]
         ) { 
-          File.read(File.expand_path("tmp/#{t[:output]}", app.root))
+          File.read(File.expand_path(tmp_path(t), app.root))
         }
-      ]
+      end
     end
 
     # Builds the project
     def recompile!(*)
       options[:targets].each do |t|
-        flags = []
+        flags = (t[:flags] || []).dup
         flags << "--debug" if t[:debug]
         flags << "-g uglifyify" if t[:minify]
 
-        env = t[:env]
+        env = (t[:env] || {}).dup
         env[:NODE_ENV] = "production" unless t[:debug]
 
         env_list = env.reduce([]) do |sum, (k, v)|
@@ -49,8 +49,22 @@ module Middleman
         end
 
         puts "Recompiling: #{t[:output]}"
-        puts `#{env_list.join(" ")} ./node_modules/.bin/browserify -t [ reactify --es6 ] #{flags.join(" ")} ./source/#{t[:main]} -o ./tmp/#{t[:output]}`
+
+        cmd = %Q{#{env_list.join(" ")} #{browserify_path} -t [ reactify --es6 ] #{flags.join(" ")} ./source/#{t[:main]} -o ./#{tmp_path(t)}}
+        puts "Running: #{cmd}"
+        puts `#{cmd}`
       end
+    end
+
+    def browserify_path
+      File.join('.', 'node_modules', '.bin', 'browserify')
+    end
+
+    def tmp_path(t)
+      p = "tmp/#{t[:output]}"
+      dir = File.dirname(p)
+      FileUtils.mkdir_p(dir) unless File.exist?(dir)
+      p
     end
 
     # Represents a Middleman page which simply outputs the string
